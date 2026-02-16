@@ -1,14 +1,20 @@
 local UserInputService = game:GetService("UserInputService")
+local Flags = { Farm = 'Self', -- Self, Milky Way etc.
+   SellAllDebounce = 10,
+   AutoEquipRod = true,
+   AutoLock=true,
+   LockRarityThreshold="Legendary"}
 
-local Flags = {
-    Farm = 'Self', -- Self, Milky Way, Andromeda, Centaurus A, Hoag's Object, Negative Galaxy, The Eye
-    SellAll = true,
-    SellAllDebounce = 10,
-    AutoEquipRod = true,
+local Players=game:GetService("Players")
+local ReplicatedStorage=game:GetService("ReplicatedStorage")
+local Client=Players.LocalPlayer
+local Backpack=Client:FindFirstChildWhichIsA("Backpack")
 
-    -- Auto-lock settings
-    AutoLock = true,              -- Toggle auto-lock on/off
-    LockRarityThreshold = "Legendary", -- Rarity or higher will be auto-locked
+shared.afy=true print("[afy]",shared.afy)
+--changed RarityOrder to use [Key] instead of searching for rarity strings in inventory stars folder
+
+while shared
+
 }
 
 local Players = game:GetService("Players")
