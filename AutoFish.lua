@@ -1,127 +1,161 @@
--- Services
+local UserInputService = game:GetService("UserInputService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local UserInputService = game:GetService("UserInputService")
 
 local Client = Players.LocalPlayer
 local Backpack = Client:FindFirstChildWhichIsA("Backpack")
 
--- Flags / Settings
 local Flags = {
-    Farm = "Self",                 -- Self, Milky Way, Andromeda, etc.
-    SellAll = true,                -- Toggle auto-sell
-    SellAllDebounce = 10,          -- Seconds between sells
-    AutoEquipRod = true,           -- Auto-equip rod if missing
-    AutoLock = true,                -- Toggle auto-lock
-    LockRarityThreshold = "Legendary", -- Rarity or higher will auto-lock
+    Farm = "Self",
+    SellAll = true,
+    SellAllDebounce = 10,
+    AutoEquipRod = true,
+
+    AutoLock = true,
+    LockRarityThreshold = "Legendary",
 }
 
--- Internal
-local HiddenFlags = { Connections = {}, SellAllDebounce = 0 }
+local HiddenFlags = { SellAllDebounce = 0 }
+
 shared.afy = not shared.afy
-print("[afy] AutoFish Active:", shared.afy)
+print("[AutoFish Running]:", shared.afy)
 
--- Rarity order
-local RarityOrder = { Common=1, Uncommon=2, Rare=3, Epic=4, Legendary=5, Mythic=6, Divine=7 }
+local RarityOrder = {
+    Common = 1, Uncommon = 2, Rare = 3, Epic = 4,
+    Legendary = 5, Mythic = 6, Divine = 7
+}
 
--- Helpers
-local function GetRoot(Character) return Character and Character:FindFirstChild("HumanoidRootPart") end
-local function GetHumanoid(Character) return Character and Character:FindFirstChild("Humanoid") end
-
--- Auto-cast
-local function Cast()
-    local Character = Client.Character
-    local Humanoid = GetHumanoid(Character)
-    local Root = GetRoot(Character)
-    if not Root then return end
-
-    local Rod = Character:FindFirstChild("Rod")
-    if not Rod then
-        Rod = Backpack and Backpack:FindFirstChild("Rod")
-        if not Rod or not Flags.AutoEquipRod then return end
-        Rod.Parent = Character
-    end
-
-    local Farming = Flags.Farm == "Self" and Root or workspace.Galaxies:FindFirstChild(Flags.Farm) or Root
-    local FarmPos = Farming:GetPivot().Position + Vector3.new(0, 5, 0)
-    local FarmLook = Farming:GetPivot().LookVector
-
-    ReplicatedStorage.Events.Global.Cast:FireServer(Humanoid, FarmPos, FarmLook, Rod.Model.Nodes.RodTip.Attachment)
-    ReplicatedStorage.Events.Global.WithdrawBobber:FireServer(Humanoid)
+local function GetRoot(char)
+    return char and char:FindFirstChild("HumanoidRootPart")
 end
 
--- Auto-confirm stars
-local ClientRecieveItems = ReplicatedStorage.Events.Global.ClientRecieveItems
-table.insert(HiddenFlags.Connections, ClientRecieveItems.OnClientEvent:Connect(function(...)
-    local Data = {...}
-    local Info = Data[4] or {}
-    local TimingTbl = Data[6] or {}
+local function GetHumanoid(char)
+    return char and char:FindFirstChild("Humanoid")
+end
 
-    for Index, StarData in Info do
-        local Id = StarData["id"]
-        if Id then
-            task.wait(TimingTbl[Index] or 3)
-            ReplicatedStorage.Events.Global.ClientItemConfirm:FireServer(Id)
-        end
+--------------------------------------------------
+-- 🔎 FIND PLAYERDATA (AUTO)
+--------------------------------------------------
+local function FindPlayerData()
+    local pd = ReplicatedStorage:FindFirstChild("PlayerData")
+    if pd and pd:FindFirstChild(Client.Name) then
+        return pd[Client.Name]
     end
-end))
 
--- Auto-lock stars
+    pd = Client:FindFirstChild("PlayerData")
+    if pd then return pd end
+
+    warn("[DEBUG] PlayerData NOT FOUND")
+    return nil
+end
+
+--------------------------------------------------
+-- 🎣 AUTO CAST
+--------------------------------------------------
+local function Cast()
+    local char = Client.Character
+    local root = GetRoot(char)
+    local hum = GetHumanoid(char)
+    if not root then return end
+
+    local rod = char:FindFirstChild("Rod") or (Backpack and Backpack:FindFirstChild("Rod"))
+    if not rod or not Flags.AutoEquipRod then return end
+    rod.Parent = char
+
+    local farmObj = Flags.Farm == "Self" and root or workspace.Galaxies:FindFirstChild(Flags.Farm) or root
+    local pos = farmObj:GetPivot().Position + Vector3.new(0,5,0)
+    local look = farmObj:GetPivot().LookVector
+
+    ReplicatedStorage.Events.Global.Cast:FireServer(hum, pos, look, rod.Model.Nodes.RodTip.Attachment)
+    ReplicatedStorage.Events.Global.WithdrawBobber:FireServer(hum)
+end
+
+--------------------------------------------------
+-- 🔒 AUTO LOCK DEBUG
+--------------------------------------------------
 local function AutoLockStars()
     if not Flags.AutoLock then return end
-    local Inventory = ReplicatedStorage:FindFirstChild("PlayerData")
-    if not Inventory or not Inventory:FindFirstChild(Client.Name) then return end
-    local StarsFolder = Inventory[Client.Name]:FindFirstChild("Stars")
-    if not StarsFolder then return end
 
-    for _, Star in ipairs(StarsFolder:GetChildren()) do
-        local rarityObj = Star:FindFirstChild("Rarity")
+    local playerData = FindPlayerData()
+    if not playerData then return end
+
+    local starsFolder = playerData:FindFirstChild("Stars")
+    if not starsFolder then
+        warn("[DEBUG] Stars folder NOT FOUND")
+        return
+    end
+
+    local lockEvent = ReplicatedStorage:FindFirstChild("Events")
+        and ReplicatedStorage.Events.Global:FindFirstChild("LockStar")
+
+    if not lockEvent then
+        warn("[DEBUG] LockStar EVENT NOT FOUND")
+        return
+    end
+
+    for _, star in ipairs(starsFolder:GetChildren()) do
+        local rarityObj = star:FindFirstChild("Rarity")
         local rarity = rarityObj and rarityObj.Value
+
         if rarity and RarityOrder[rarity] >= RarityOrder[Flags.LockRarityThreshold] then
-            ReplicatedStorage.Events.Global.LockStar:FireServer(Star.Name, true)
-            print("[AutoLock] Locked:", Star.Name, "| Rarity:", rarity)
+            print("[LOCKING]", star.Name, rarity)
+            lockEvent:FireServer(star.Name, true)
         end
     end
 end
 
--- Keybind toggle for AutoLock
-UserInputService.InputBegan:Connect(function(input, gameProcessed)
-    if gameProcessed then return end
+--------------------------------------------------
+-- 💰 AUTO SELL DEBUG
+--------------------------------------------------
+local function AutoSell()
+    if not Flags.SellAll then return end
+    if tick() - HiddenFlags.SellAllDebounce < Flags.SellAllDebounce then return end
+
+    local dialogue = ReplicatedStorage:FindFirstChild("Dialogue")
+    local sellEvent = dialogue
+        and dialogue:FindFirstChild("Events")
+        and dialogue.Events.Global:FindFirstChild("ClientChoosesDialogueOption")
+
+    if not sellEvent then
+        warn("[DEBUG] Sell Dialogue EVENT NOT FOUND")
+        return
+    end
+
+    print("[SELLING ALL]")
+    sellEvent:FireServer({
+        id = "sell-all",
+        text = "Sell <font color='#26ff47'>all</font> of my stars.",
+        npc = "Star Merchant"
+    })
+
+    HiddenFlags.SellAllDebounce = tick()
+end
+
+--------------------------------------------------
+-- ⌨️ TOGGLES
+--------------------------------------------------
+UserInputService.InputBegan:Connect(function(input, gp)
+    if gp then return end
+
     if input.KeyCode == Enum.KeyCode.L then
         Flags.AutoLock = not Flags.AutoLock
-        print("[AutoLock] Toggled:", Flags.AutoLock)
+        print("[AutoLock]:", Flags.AutoLock)
+    end
+
+    if input.KeyCode == Enum.KeyCode.K then
+        Flags.SellAll = not Flags.SellAll
+        print("[AutoSell]:", Flags.SellAll)
     end
 end)
 
--- Main loop
+--------------------------------------------------
+-- 🔁 MAIN LOOP
+--------------------------------------------------
 while shared.afy and task.wait(1) do
-    local Character = Client.Character
-    if not GetRoot(Character) then continue end
+    local char = Client.Character
+    if not GetRoot(char) then continue end
 
-    -- Cast
     Cast()
-
-    -- Auto-lock stars
     AutoLockStars()
-    task.wait(0.1) -- slight delay to ensure lock processed
-
-    -- Auto-sell stars
-    if Flags.SellAll and tick() - HiddenFlags.SellAllDebounce >= (Flags.SellAllDebounce or 10) then
-        local DialogueEvent = ReplicatedStorage:FindFirstChild("Dialogue") 
-            and ReplicatedStorage.Dialogue.Events.Global.ClientChoosesDialogueOption
-        if DialogueEvent then
-            DialogueEvent:FireServer({
-                id = "sell-all",
-                text = "Sell <font color='#26ff47'>all</font> of my stars.",
-                npc = "Star Merchant"
-            })
-            HiddenFlags.SellAllDebounce = tick()
-            print("[AutoSell] Triggered")
-        end
-    end
-end
-
--- Cleanup connections
-for _, Connection in ipairs(HiddenFlags.Connections) do
-    Connection:Disconnect()
+    AutoSell()
 end
