@@ -122,7 +122,8 @@ while shared.afy and task.wait() do
     if not Root then continue end
 
     Cast()
-
+    
+    print("Sell check running...")
     if Flags.SellAll and tick() - HiddenFlags.SellAllDebounce >= (Flags.SellAllDebounce or 10) then
         local Inventory = ReplicatedStorage:FindFirstChild("PlayerData")
         if Inventory and Inventory:FindFirstChild(Client.Name) then
@@ -145,7 +146,12 @@ while shared.afy and task.wait() do
                 end
 
                 for _, Star in ipairs(Stars) do
-                    if ShouldSell(Star, Protected) then
+                    local sell = ShouldSell(Star, Protected)
+
+                    print("Checking:", Star.Name, " | ShouldSell =", sell)
+
+                    if sell then
+                        print("SELLING:", Star.Name)
                         ReplicatedStorage.Events.Global.SellStar:FireServer(Star.Name)
                         task.wait(0.05)
                     end
