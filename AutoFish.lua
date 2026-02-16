@@ -123,7 +123,7 @@ while shared.afy and task.wait() do
 
     Cast()
 
-    if Flags.SellAll and tick() - (Flags.SellAllDebounce or 10) > HiddenFlags.SellAllDebounce then
+    if Flags.SellAll and tick() - HiddenFlags.SellAllDebounce >= (Flags.SellAllDebounce or 10) then
         local Inventory = ReplicatedStorage:FindFirstChild("PlayerData")
         if Inventory and Inventory:FindFirstChild(Client.Name) then
             local StarsFolder = Inventory[Client.Name]:FindFirstChild("Stars")
